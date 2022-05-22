@@ -20,6 +20,7 @@ import (
 )
 
 type Channel struct {
+	Id    string
 	User  string
 	Title string
 }
@@ -68,7 +69,7 @@ func getChannels(client *helix.Client, options *SearchOptions) ([]Channel, error
 		if titleContains != "" && !strings.Contains(title, titleContains) {
 			continue
 		}
-		response = append(response, Channel{User: v.BroadcasterLogin, Title: v.Title})
+		response = append(response, Channel{Id: v.ID, User: v.BroadcasterLogin, Title: v.Title})
 	}
 	return response, nil
 }
@@ -149,6 +150,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	activeChannels := map[string]bool{}
 	for {
 		log.Println("searching for channels")
 		channels, err := getChannels(client, &SearchOptions{Query: searchQuery, GameId: gameId, TitleContains: titleContains})
@@ -156,14 +158,25 @@ func main() {
 			log.Println(fmt.Errorf("failed to get active channels. %w", err))
 		}
 		var messages []string
+		tmp := map[string]bool{}
 		for _, c := range channels {
+			tmp[c.Id] = true
+			if _, exists := activeChannels[c.Id]; exists {
+				continue
+			}
 			messages = append(messages, strings.TrimSpace(fmt.Sprintf("https://twitch.tv/%s is streaming: %s", c.User, c.Title)))
+			activeChannels[c.Id] = true
 		}
 		msg := strings.Join(messages, "\n")
 		if msg != "" {
 			err = sendToDiscord(msg, discordUrl)
 			if err != nil {
 				log.Println(fmt.Errorf("failed to send message to discord. %w", err))
+			}
+		}
+		for id := range activeChannels {
+			if _, exists := tmp[id]; !exists {
+				delete(activeChannels, id)
 			}
 		}
 		log.Printf("sleeping for %s", timeout)
